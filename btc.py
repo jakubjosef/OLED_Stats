@@ -236,11 +236,18 @@ class OLEDStatsDisplay:
         temp, humidity = self._read_si7021()
         light = self._read_light()
 
-        # Draw Bitcoin price centered and large
-        price_x, price_y = self._center_text(btc_price, self.price_font, -12)
-        self.draw.text((price_x, price_y), btc_price, font=self.price_font, fill=255)
+        # Draw Bitcoin price at the top
+        price_x, _ = self._center_text(btc_price, self.price_font)
+        self.draw.text((price_x, 2), btc_price, font=self.price_font, fill=255)
 
-        # Draw environment data in bottom area
+        # Draw BTC/USD label below price
+        label = "BTC/USD"
+        label_x, _ = self._center_text(label, self.label_font)
+        # Position it just below the price
+        _, price_height = self._get_text_dimensions(btc_price, self.price_font)
+        self.draw.text((label_x, 6 + price_height), label, font=self.label_font, fill=255)
+
+        # Draw environment data at the bottom
         y_pos = self.HEIGHT - 14
 
         # Temperature (left)
