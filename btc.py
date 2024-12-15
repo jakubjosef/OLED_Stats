@@ -4,7 +4,6 @@ import busio
 import gpiozero
 from PIL import Image, ImageDraw, ImageFont
 import adafruit_ssd1306
-import subprocess
 import requests
 from typing import Tuple, Dict
 import logging
@@ -14,16 +13,23 @@ class OLEDStatsDisplay:
     WIDTH = 128
     HEIGHT = 64
     BORDER = 5
-    REFRESH_RATE = 60.0  # seconds - increased to avoid API rate limits
-    I2C_ADDRESS = 0x3C
+    REFRESH_RATE = 60.0  # seconds
+    OLED_I2C_ADDRESS = 0x3C
+    TEMP_I2C_ADDRESS = 0x40
     RESET_PIN = 4
-    PRICE_FONT_SIZE = 32  # Increased from 24 to 32
-    LABEL_FONT_SIZE = 14  # Slightly larger label font
+    PRICE_FONT_SIZE = 32
+    LABEL_FONT_SIZE = 14
 
     def __init__(self):
         # Configure logging
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
+
+        # Initialize I2C bus
+        self.i2c = board.I2C()
+
+        # Initialize temperature sensor
+        self._setup_temp_sensor()
 
         # Initialize display hardware
         self._setup_display()
@@ -39,6 +45,51 @@ class OLEDStatsDisplay:
             self.price_font = ImageFont.load_default()
             self.label_font = ImageFont.load_default()
 
+    def _setup_temp_sensor(self):
+        """Initialize the I2C temperature sensor."""
+        try:
+            self.temp_sensor = busio.I2C(board.SCL, board.SDA)
+            # Check if sensor is present
+            while not self.temp_sensor.try_lock():
+                pass
+            addresses = self.temp_sensor.scan()
+            self.temp_sensor.unlock()
+            if self.TEMP_I2C_ADDRESS not in addresses:
+                raise RuntimeError(f"No I2C device found at address {hex(self.TEMP_I2C_ADDRESS)}")
+            self.logger.info(f"Temperature sensor found at {hex(self.TEMP_I2C_ADDRESS)}")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize temperature sensor: {str(e)}")
+            raise
+
+    def _read_temperature(self) -> float:
+        """Read temperature from I2C sensor."""
+        try:
+            # Lock the I2C bus
+            while not self.temp_sensor.try_lock():
+                pass
+
+            # Send temperature measurement command (0xF3)
+            self.temp_sensor.writeto(self.TEMP_I2C_ADDRESS, bytes([0xF3]))
+
+            # Wait for measurement (50ms)
+            time.sleep(0.05)
+
+            # Read 2 bytes of temperature data
+            result = bytearray(2)
+            self.temp_sensor.readfrom_into(self.TEMP_I2C_ADDRESS, result)
+
+            # Release the I2C bus
+            self.temp_sensor.unlock()
+
+            # Convert the raw data to temperature
+            raw_temp = (result[0] << 8) | result[1]
+            temperature = -46.85 + (175.72 * raw_temp / 65536)
+            return round(temperature, 1)
+
+        except Exception as e:
+            self.logger.error(f"Failed to read temperature: {str(e)}")
+            return None
+
     def _setup_display(self):
         """Initialize the OLED display with proper reset sequence."""
         try:
@@ -48,10 +99,9 @@ class OLEDStatsDisplay:
             # Perform reset sequence
             self._reset_display()
 
-            # Initialize I2C and display
-            i2c = board.I2C()
+            # Initialize OLED display
             self.oled = adafruit_ssd1306.SSD1306_I2C(
-                self.WIDTH, self.HEIGHT, i2c, addr=self.I2C_ADDRESS
+                self.WIDTH, self.HEIGHT, self.i2c, addr=self.OLED_I2C_ADDRESS
             )
 
             # Clear display
@@ -90,15 +140,6 @@ class OLEDStatsDisplay:
             self.logger.error(f"Failed to get Bitcoin price: {str(e)}")
             return "Error"
 
-    def _get_temperature(self) -> str:
-        """Get system temperature."""
-        try:
-            cmd = "vcgencmd measure_temp |cut -f 2 -d '='"
-            return subprocess.check_output(cmd, shell=True).decode('utf-8').strip()
-        except subprocess.SubprocessError as e:
-            self.logger.error(f"Failed to get temperature: {str(e)}")
-            return "Error"
-
     def _get_text_dimensions(self, text: str, font: ImageFont.FreeTypeFont) -> Tuple[int, int]:
         """Get the width and height of a text string with given font."""
         bbox = self.draw.textbbox((0, 0), text, font=font)
@@ -120,7 +161,7 @@ class OLEDStatsDisplay:
 
         # Get current price and temperature
         btc_price = self._get_bitcoin_price()
-        temp = self._get_temperature()
+        temp = self._read_temperature()
 
         # Draw Bitcoin price centered and large
         price_x, price_y = self._center_text(btc_price, self.price_font, -8)
@@ -132,8 +173,10 @@ class OLEDStatsDisplay:
         self.draw.text((label_x, label_y), label, font=self.label_font, fill=255)
 
         # Draw temperature at bottom right
-        temp_x = self.WIDTH - self._get_text_dimensions(temp, self.label_font)[0] - 2
-        self.draw.text((temp_x, self.HEIGHT - 14), temp, font=self.label_font, fill=255)
+        if temp is not None:
+            temp_text = f"{temp}°C"
+            temp_x = self.WIDTH - self._get_text_dimensions(temp_text, self.label_font)[0] - 2
+            self.draw.text((temp_x, self.HEIGHT - 14), temp_text, font=self.label_font, fill=255)
 
         # Update display
         self.oled.image(self.image)
