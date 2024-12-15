@@ -17,8 +17,8 @@ class OLEDStatsDisplay:
     REFRESH_RATE = 60.0  # seconds - increased to avoid API rate limits
     I2C_ADDRESS = 0x3C
     RESET_PIN = 4
-    PRICE_FONT_SIZE = 24  # Larger font for BTC price
-    STATS_FONT_SIZE = 12  # Smaller font for system stats
+    PRICE_FONT_SIZE = 32  # Increased from 24 to 32
+    LABEL_FONT_SIZE = 14  # Slightly larger label font
 
     def __init__(self):
         # Configure logging
@@ -33,11 +33,11 @@ class OLEDStatsDisplay:
         self.draw = ImageDraw.Draw(self.image)
         try:
             self.price_font = ImageFont.truetype('PixelOperator.ttf', self.PRICE_FONT_SIZE)
-            self.stats_font = ImageFont.truetype('PixelOperator.ttf', self.STATS_FONT_SIZE)
+            self.label_font = ImageFont.truetype('PixelOperator.ttf', self.LABEL_FONT_SIZE)
         except OSError:
             self.logger.warning("PixelOperator font not found, falling back to default")
             self.price_font = ImageFont.load_default()
-            self.stats_font = ImageFont.load_default()
+            self.label_font = ImageFont.load_default()
 
     def _setup_display(self):
         """Initialize the OLED display with proper reset sequence."""
@@ -90,27 +90,14 @@ class OLEDStatsDisplay:
             self.logger.error(f"Failed to get Bitcoin price: {str(e)}")
             return "Error"
 
-    def _get_system_stats(self) -> Dict[str, str]:
-        """Collect system statistics using shell commands."""
+    def _get_temperature(self) -> str:
+        """Get system temperature."""
         try:
-            stats = {}
-
-            # CPU Load Average
-            cmd = "top -bn1 | grep load | awk '{printf \"CPU: %.1f\", $(NF-2)}'"
-            stats['cpu'] = subprocess.check_output(cmd, shell=True).decode('utf-8')
-
-            # Temperature
             cmd = "vcgencmd measure_temp |cut -f 2 -d '='"
-            stats['temp'] = subprocess.check_output(cmd, shell=True).decode('utf-8').strip()
-
-            return stats
-
+            return subprocess.check_output(cmd, shell=True).decode('utf-8').strip()
         except subprocess.SubprocessError as e:
-            self.logger.error(f"Failed to get system stats: {str(e)}")
-            return {
-                'cpu': 'Error',
-                'temp': 'Error'
-            }
+            self.logger.error(f"Failed to get temperature: {str(e)}")
+            return "Error"
 
     def _get_text_dimensions(self, text: str, font: ImageFont.FreeTypeFont) -> Tuple[int, int]:
         """Get the width and height of a text string with given font."""
@@ -127,27 +114,26 @@ class OLEDStatsDisplay:
         return x, y
 
     def update_display(self):
-        """Update the display with Bitcoin price and system stats."""
+        """Update the display with Bitcoin price and temperature."""
         # Clear the image
         self.draw.rectangle((0, 0, self.WIDTH, self.HEIGHT), outline=0, fill=0)
 
-        # Get current price and stats
+        # Get current price and temperature
         btc_price = self._get_bitcoin_price()
-        stats = self._get_system_stats()
+        temp = self._get_temperature()
 
         # Draw Bitcoin price centered and large
-        price_x, price_y = self._center_text(btc_price, self.price_font, -10)
+        price_x, price_y = self._center_text(btc_price, self.price_font, -8)
         self.draw.text((price_x, price_y), btc_price, font=self.price_font, fill=255)
 
         # Draw "BTC/USD" label below price
         label = "BTC/USD"
-        label_x, label_y = self._center_text(label, self.stats_font, 15)
-        self.draw.text((label_x, label_y), label, font=self.stats_font, fill=255)
+        label_x, label_y = self._center_text(label, self.label_font, 20)
+        self.draw.text((label_x, label_y), label, font=self.label_font, fill=255)
 
-        # Draw system stats at bottom
-        stats_text = f"{stats['cpu']} | {stats['temp']}"
-        stats_x, _ = self._center_text(stats_text, self.stats_font)
-        self.draw.text((stats_x, self.HEIGHT - 12), stats_text, font=self.stats_font, fill=255)
+        # Draw temperature at bottom right
+        temp_x = self.WIDTH - self._get_text_dimensions(temp, self.label_font)[0] - 2
+        self.draw.text((temp_x, self.HEIGHT - 14), temp, font=self.label_font, fill=255)
 
         # Update display
         self.oled.image(self.image)
