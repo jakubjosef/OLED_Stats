@@ -3,7 +3,8 @@ import board
 import busio
 import gpiozero
 from PIL import Image, ImageDraw, ImageFont
-import adafruit_ssd1306
+import adafruit_displayio_sh1106
+import displayio
 import requests
 from typing import Tuple, Dict
 import logging
@@ -163,38 +164,68 @@ class OLEDStatsDisplay:
             return None
 
     def _setup_display(self):
-        """Initialize the OLED display with proper reset sequence."""
+        """Initialize the SH1106 OLED display."""
         try:
-            # Setup reset pin
-            self.reset_pin = gpiozero.OutputDevice(self.RESET_PIN, active_high=False)
+            displayio.release_displays()  # Release any existing displays
 
-            # Perform reset sequence
-            self._reset_display()
+            # Create the I2C interface for the display
+            display_bus = displayio.I2CDisplay(self.i2c, device_address=self.OLED_I2C_ADDRESS)
 
-            # Initialize OLED display
-            self.oled = adafruit_ssd1306.SSD1306_I2C(
-                self.WIDTH, self.HEIGHT, self.i2c, addr=self.OLED_I2C_ADDRESS
+            # Create the SH1106 OLED display
+            self.oled = adafruit_displayio_sh1106.SH1106(
+                display_bus,
+                width=self.WIDTH,
+                height=self.HEIGHT,
+                rotation=0
             )
 
-            # Clear display
-            self.clear_display()
+            # Create display group
+            self.display_group = displayio.Group()
+            self.oled.show(self.display_group)
 
+            self.logger.info("SH1106 display initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize display: {str(e)}")
             raise
 
-    def _reset_display(self):
-        """Perform hardware reset sequence."""
-        self.reset_pin.on()
-        time.sleep(0.1)
-        self.reset_pin.off()
-        time.sleep(0.1)
-        self.reset_pin.on()
-
     def clear_display(self):
-        """Clear the display buffer and update."""
-        self.oled.fill(0)
-        self.oled.show()
+        """Clear the display."""
+        try:
+            # Remove all items from the display group
+            while len(self.display_group) > 0:
+                self.display_group.pop()
+        except Exception as e:
+            self.logger.error(f"Failed to clear display: {str(e)}")
+
+    def _update_display_with_image(self):
+        """Convert PIL Image to displayio Bitmap and show it."""
+        try:
+            # Convert PIL Image to bytes
+            pixels = list(self.image.getdata())
+            pixel_width = self.image.width
+            pixel_height = self.image.height
+
+            # Create a bitmap and a palette
+            bitmap = displayio.Bitmap(pixel_width, pixel_height, 2)
+            palette = displayio.Palette(2)
+            palette[0] = 0x000000  # Black
+            palette[1] = 0xFFFFFF  # White
+
+            # Copy pixels to bitmap
+            for y in range(pixel_height):
+                for x in range(pixel_width):
+                    pixel = pixels[y * pixel_width + x]
+                    bitmap[x, y] = 1 if pixel > 0 else 0
+
+            # Create TileGrid with the bitmap
+            tile_grid = displayio.TileGrid(bitmap, pixel_shader=palette)
+
+            # Clear previous content and add new TileGrid
+            self.clear_display()
+            self.display_group.append(tile_grid)
+
+        except Exception as e:
+            self.logger.error(f"Failed to update display: {str(e)}")
 
     def _get_bitcoin_price(self) -> str:
         """Get current Bitcoin price from CoinGecko API."""
@@ -267,9 +298,8 @@ class OLEDStatsDisplay:
             light_x = self.WIDTH - self._get_text_dimensions(light_text, self.label_font)[0] - 2
             self.draw.text((light_x, y_pos), light_text, font=self.label_font, fill=255)
 
-        # Update display
-        self.oled.image(self.image)
-        self.oled.show()
+        # Update display with the new image
+        self._update_display_with_image()
 
     def run(self):
         """Main loop to continuously update the display."""
