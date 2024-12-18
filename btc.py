@@ -111,7 +111,8 @@ class OLEDStatsDisplay:
             raw_temp = (data[0] << 8) | data[1]
 
             # Convert temperature according to datasheet formula
-            temp = ((175.72 * raw_temp) / 65536.0) - 46.85
+            # T(°C) = (172.72 * raw_temp / 65536.0) - 40.0
+            temp = ((172.72 * raw_temp) / 65536.0) - 40.0
 
             return round(temp, 1), round(humidity, 1)
 
