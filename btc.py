@@ -3,11 +3,12 @@ import board
 import busio
 import gpiozero
 from PIL import Image, ImageDraw, ImageFont
-import adafruit_displayio_sh1106
-import displayio
 import requests
 from typing import Tuple, Dict
 import logging
+from luma.core.interface.serial import i2c
+from luma.core.render import canvas
+from luma.oled.device import sh1106
 
 class OLEDStatsDisplay:
     # Display constants
@@ -15,10 +16,10 @@ class OLEDStatsDisplay:
     HEIGHT = 64
     BORDER = 5
     REFRESH_RATE = 60.0  # seconds
+    OLED_I2C_PORT = 1  # I2C port number
     OLED_I2C_ADDRESS = 0x3C
     SI7021_ADDRESS = 0x40
     LIGHT_I2C_ADDRESS = 0x23
-    RESET_PIN = 4
     PRICE_FONT_SIZE = 32
     LABEL_FONT_SIZE = 14
 
@@ -48,9 +49,7 @@ class OLEDStatsDisplay:
         # Initialize display hardware
         self._setup_display()
 
-        # Initialize drawing resources
-        self.image = Image.new("1", (self.WIDTH, self.HEIGHT))
-        self.draw = ImageDraw.Draw(self.image)
+        # Initialize fonts
         try:
             self.price_font = ImageFont.truetype('PixelOperator.ttf', self.PRICE_FONT_SIZE)
             self.label_font = ImageFont.truetype('PixelOperator.ttf', self.LABEL_FONT_SIZE)
@@ -58,6 +57,21 @@ class OLEDStatsDisplay:
             self.logger.warning("PixelOperator font not found, falling back to default")
             self.price_font = ImageFont.load_default()
             self.label_font = ImageFont.load_default()
+
+    def _setup_display(self):
+        """Initialize the SH1106 OLED display using luma.oled."""
+        try:
+            # Initialize I2C interface
+            serial = i2c(port=self.OLED_I2C_PORT, address=self.OLED_I2C_ADDRESS)
+
+            # Create the SH1106 device
+            self.oled = sh1106(serial, rotate=0)
+            self.oled.contrast(255)  # Max contrast
+
+            self.logger.info("SH1106 display initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize display: {str(e)}")
+            raise
 
     def _setup_si7021_sensor(self):
         """Initialize the Si7021 temperature and humidity sensor."""
@@ -163,70 +177,6 @@ class OLEDStatsDisplay:
             self.light_sensor.unlock()
             return None
 
-    def _setup_display(self):
-        """Initialize the SH1106 OLED display."""
-        try:
-            displayio.release_displays()  # Release any existing displays
-
-            # Create the I2C interface for the display
-            display_bus = displayio.I2CDisplay(self.i2c, device_address=self.OLED_I2C_ADDRESS)
-
-            # Create the SH1106 OLED display
-            self.oled = adafruit_displayio_sh1106.SH1106(
-                display_bus,
-                width=self.WIDTH,
-                height=self.HEIGHT,
-                rotation=0
-            )
-
-            # Create display group
-            self.display_group = displayio.Group()
-            self.oled.show(self.display_group)
-
-            self.logger.info("SH1106 display initialized successfully")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize display: {str(e)}")
-            raise
-
-    def clear_display(self):
-        """Clear the display."""
-        try:
-            # Remove all items from the display group
-            while len(self.display_group) > 0:
-                self.display_group.pop()
-        except Exception as e:
-            self.logger.error(f"Failed to clear display: {str(e)}")
-
-    def _update_display_with_image(self):
-        """Convert PIL Image to displayio Bitmap and show it."""
-        try:
-            # Convert PIL Image to bytes
-            pixels = list(self.image.getdata())
-            pixel_width = self.image.width
-            pixel_height = self.image.height
-
-            # Create a bitmap and a palette
-            bitmap = displayio.Bitmap(pixel_width, pixel_height, 2)
-            palette = displayio.Palette(2)
-            palette[0] = 0x000000  # Black
-            palette[1] = 0xFFFFFF  # White
-
-            # Copy pixels to bitmap
-            for y in range(pixel_height):
-                for x in range(pixel_width):
-                    pixel = pixels[y * pixel_width + x]
-                    bitmap[x, y] = 1 if pixel > 0 else 0
-
-            # Create TileGrid with the bitmap
-            tile_grid = displayio.TileGrid(bitmap, pixel_shader=palette)
-
-            # Clear previous content and add new TileGrid
-            self.clear_display()
-            self.display_group.append(tile_grid)
-
-        except Exception as e:
-            self.logger.error(f"Failed to update display: {str(e)}")
-
     def _get_bitcoin_price(self) -> str:
         """Get current Bitcoin price from CoinGecko API."""
         try:
@@ -259,47 +209,49 @@ class OLEDStatsDisplay:
 
     def update_display(self):
         """Update the display with Bitcoin price and sensor data."""
-        # Clear the image
-        self.draw.rectangle((0, 0, self.WIDTH, self.HEIGHT), outline=0, fill=0)
+        try:
+            # Get current values
+            btc_price = self._get_bitcoin_price()
+            temp, humidity = self._read_si7021()
+            light = self._read_light()
 
-        # Get current values
-        btc_price = self._get_bitcoin_price()
-        temp, humidity = self._read_si7021()
-        light = self._read_light()
+            # Use Luma's canvas context manager for drawing
+            with canvas(self.oled) as draw:
+                self.draw = draw  # Store draw object for _get_text_dimensions
 
-        # Draw Bitcoin price at the top
-        price_x, _ = self._center_text(btc_price, self.price_font)
-        self.draw.text((price_x, 2), btc_price, font=self.price_font, fill=255)
+                # Draw Bitcoin price at the top
+                price_x, _ = self._center_text(btc_price, self.price_font)
+                draw.text((price_x, 2), btc_price, font=self.price_font, fill="white")
 
-        # Draw BTC/USD label below price
-        label = "BTC/USD"
-        label_x, _ = self._center_text(label, self.label_font)
-        # Position it just below the price
-        _, price_height = self._get_text_dimensions(btc_price, self.price_font)
-        self.draw.text((label_x, 6 + price_height), label, font=self.label_font, fill=255)
+                # Draw BTC/USD label below price
+                label = "BTC/USD"
+                label_x, _ = self._center_text(label, self.label_font)
+                # Position it just below the price
+                _, price_height = self._get_text_dimensions(btc_price, self.price_font)
+                draw.text((label_x, 6 + price_height), label, font=self.label_font, fill="white")
 
-        # Draw environment data at the bottom
-        y_pos = self.HEIGHT - 14
+                # Draw environment data at the bottom
+                y_pos = self.HEIGHT - 14
 
-        # Temperature (left)
-        if temp is not None:
-            temp_text = f"{temp}°C"
-            self.draw.text((2, y_pos), temp_text, font=self.label_font, fill=255)
+                # Temperature (left)
+                if temp is not None:
+                    temp_text = f"{temp}°C"
+                    draw.text((2, y_pos), temp_text, font=self.label_font, fill="white")
 
-        # Humidity (center)
-        if humidity is not None:
-            humid_text = f"{humidity}%"
-            humid_x = (self.WIDTH - self._get_text_dimensions(humid_text, self.label_font)[0]) // 2
-            self.draw.text((humid_x, y_pos), humid_text, font=self.label_font, fill=255)
+                # Humidity (center)
+                if humidity is not None:
+                    humid_text = f"{humidity}%"
+                    humid_x = (self.WIDTH - self._get_text_dimensions(humid_text, self.label_font)[0]) // 2
+                    draw.text((humid_x, y_pos), humid_text, font=self.label_font, fill="white")
 
-        # Light (right)
-        if light is not None:
-            light_text = f"{light:.0f}lx"
-            light_x = self.WIDTH - self._get_text_dimensions(light_text, self.label_font)[0] - 2
-            self.draw.text((light_x, y_pos), light_text, font=self.label_font, fill=255)
+                # Light (right)
+                if light is not None:
+                    light_text = f"{light:.0f}lx"
+                    light_x = self.WIDTH - self._get_text_dimensions(light_text, self.label_font)[0] - 2
+                    draw.text((light_x, y_pos), light_text, font=self.label_font, fill="white")
 
-        # Update display with the new image
-        self._update_display_with_image()
+        except Exception as e:
+            self.logger.error(f"Failed to update display: {str(e)}")
 
     def run(self):
         """Main loop to continuously update the display."""
@@ -310,10 +262,12 @@ class OLEDStatsDisplay:
                 time.sleep(self.REFRESH_RATE)
         except KeyboardInterrupt:
             self.logger.info("Shutting down display")
-            self.clear_display()
+            self.oled.clear()
+            self.oled.hide()
         except Exception as e:
             self.logger.error(f"Unexpected error: {str(e)}")
-            self.clear_display()
+            self.oled.clear()
+            self.oled.hide()
 
 if __name__ == "__main__":
     try:
