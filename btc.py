@@ -90,20 +90,28 @@ class OLEDStatsDisplay:
     def _read_si7021(self) -> Tuple[float, float]:
         """Read temperature and humidity from Si7021 sensor."""
         try:
-            # Trigger humidity measurement
-            self.bus.write_byte(self.SI7021_ADDRESS, self.MEASURE_HUMIDITY)
+            # Start humidity measurement (Hold Master Mode)
+            self.bus.write_byte(self.SI7021_ADDRESS, 0xE5)  # Trigger humidity measurement
             time.sleep(0.03)  # Wait for measurement
 
             # Read humidity
-            raw_rh = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0x00, 2)
-            humidity = ((raw_rh[0] << 8) | raw_rh[1])
-            humidity = ((125 * humidity) / 65536) - 6
+            data = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0x00, 3)
+            raw_humidity = (data[0] << 8) | data[1]
 
-            # Read temperature from previous RH measurement
-            self.bus.write_byte(self.SI7021_ADDRESS, self.READ_TEMP_FROM_PREVIOUS_RH)
-            raw_temp = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0x00, 2)
-            temp = ((raw_temp[0] << 8) | raw_temp[1])
-            temp = ((175.72 * temp) / 65536) - 46.85
+            # Convert humidity according to datasheet formula
+            humidity = ((125.0 * raw_humidity) / 65536.0) - 6.0
+            humidity = max(0.0, min(100.0, humidity))  # Clamp between 0-100%
+
+            # Read temperature
+            self.bus.write_byte(self.SI7021_ADDRESS, 0xE3)  # Trigger temperature measurement
+            time.sleep(0.02)  # Wait for measurement
+
+            # Read temperature
+            data = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0x00, 3)
+            raw_temp = (data[0] << 8) | data[1]
+
+            # Convert temperature according to datasheet formula
+            temp = ((175.72 * raw_temp) / 65536.0) - 46.85
 
             return round(temp, 1), round(humidity, 1)
 
