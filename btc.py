@@ -90,29 +90,33 @@ class OLEDStatsDisplay:
     def _read_si7021(self) -> Tuple[float, float]:
         """Read temperature and humidity from Si7021 sensor."""
         try:
-            # Start humidity measurement (Hold Master Mode)
-            self.bus.write_byte(self.SI7021_ADDRESS, 0xE5)  # Trigger humidity measurement
-            time.sleep(0.03)  # Wait for measurement
+            # First read humidity - No Hold Master Mode
+            self.bus.write_byte(self.SI7021_ADDRESS, 0xF5)  # Start humidity measurement
+            time.sleep(0.025)  # Wait for measurement to complete
 
-            # Read humidity
-            data = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0x00, 3)
-            raw_humidity = (data[0] << 8) | data[1]
+            # Read the raw humidity data
+            data = []
+            for _ in range(2):  # Read 2 bytes
+                data.append(self.bus.read_byte(self.SI7021_ADDRESS))
 
-            # Convert humidity according to datasheet formula
-            humidity = ((125.0 * raw_humidity) / 65536.0) - 6.0
-            humidity = max(0.0, min(100.0, humidity))  # Clamp between 0-100%
+            raw_humidity = (data[0] << 8) + data[1]
+            humidity = ((125.0 * raw_humidity) / 65536.0) - 6
 
-            # Read temperature
-            self.bus.write_byte(self.SI7021_ADDRESS, 0xE3)  # Trigger temperature measurement
-            time.sleep(0.02)  # Wait for measurement
+            # Now read temperature
+            self.bus.write_byte(self.SI7021_ADDRESS, 0xF3)  # Start temperature measurement
+            time.sleep(0.025)  # Wait for measurement to complete
 
-            # Read temperature
-            data = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0x00, 3)
-            raw_temp = (data[0] << 8) | data[1]
+            # Read the raw temperature data
+            data = []
+            for _ in range(2):  # Read 2 bytes
+                data.append(self.bus.read_byte(self.SI7021_ADDRESS))
 
-            # Convert temperature according to datasheet formula
-            # T(°C) = (172.72 * raw_temp / 65536.0) - 40.0
-            temp = ((172.72 * raw_temp) / 65536.0) - 40.0
+            raw_temp = (data[0] << 8) + data[1]
+            temp = ((175.72 * raw_temp) / 65536.0) - 46.85
+
+            # Debug log
+            self.logger.debug(f"Raw temp bytes: {data[0]:02x} {data[1]:02x}, Raw value: {raw_temp}")
+            self.logger.debug(f"Raw humidity bytes: {data[0]:02x} {data[1]:02x}, Raw value: {raw_humidity}")
 
             return round(temp, 1), round(humidity, 1)
 
