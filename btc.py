@@ -1,7 +1,5 @@
 import time
-import board
-import busio
-import gpiozero
+from smbus2 import SMBus
 from PIL import Image, ImageDraw, ImageFont
 import requests
 from typing import Tuple, Dict
@@ -16,7 +14,7 @@ class OLEDStatsDisplay:
     HEIGHT = 64
     BORDER = 5
     REFRESH_RATE = 60.0  # seconds
-    OLED_I2C_PORT = 1  # I2C port number
+    I2C_PORT = 1  # I2C port number
     OLED_I2C_ADDRESS = 0x3C
     SI7021_ADDRESS = 0x40
     LIGHT_I2C_ADDRESS = 0x23
@@ -40,11 +38,10 @@ class OLEDStatsDisplay:
         self.logger = logging.getLogger(__name__)
 
         # Initialize I2C bus
-        self.i2c = board.I2C()
+        self.bus = SMBus(self.I2C_PORT)
 
         # Initialize sensors
-        self._setup_si7021_sensor()
-        self._setup_light_sensor()
+        self._setup_sensors()
 
         # Initialize display hardware
         self._setup_display()
@@ -62,7 +59,7 @@ class OLEDStatsDisplay:
         """Initialize the SH1106 OLED display using luma.oled."""
         try:
             # Initialize I2C interface
-            serial = i2c(port=self.OLED_I2C_PORT, address=self.OLED_I2C_ADDRESS)
+            serial = i2c(port=self.I2C_PORT, address=self.OLED_I2C_ADDRESS)
 
             # Create the SH1106 device
             self.oled = sh1106(serial, rotate=0)
@@ -73,46 +70,38 @@ class OLEDStatsDisplay:
             self.logger.error(f"Failed to initialize display: {str(e)}")
             raise
 
-    def _setup_si7021_sensor(self):
-        """Initialize the Si7021 temperature and humidity sensor."""
+    def _setup_sensors(self):
+        """Initialize both sensors."""
         try:
-            self.si7021 = busio.I2C(board.SCL, board.SDA)
-            # Check if sensor is present
-            while not self.si7021.try_lock():
-                pass
-            addresses = self.si7021.scan()
-            self.si7021.unlock()
-            if self.SI7021_ADDRESS not in addresses:
-                raise RuntimeError(f"No I2C device found at address {hex(self.SI7021_ADDRESS)}")
-            self.logger.info(f"Si7021 sensor found at {hex(self.SI7021_ADDRESS)}")
+            # Initialize BH1750 light sensor
+            self.bus.write_byte(self.LIGHT_I2C_ADDRESS, self.LIGHT_POWER_ON)
+            self.bus.write_byte(self.LIGHT_I2C_ADDRESS, self.LIGHT_RESET)
+            self.bus.write_byte(self.LIGHT_I2C_ADDRESS, self.LIGHT_CONTINUOUS_HIGH_RES)
+            time.sleep(0.2)  # Wait for first measurement
+            self.logger.info(f"Light sensor initialized at {hex(self.LIGHT_I2C_ADDRESS)}")
+
+            # Si7021 doesn't need initialization
+            self.logger.info(f"Temperature sensor ready at {hex(self.SI7021_ADDRESS)}")
+
         except Exception as e:
-            self.logger.error(f"Failed to initialize Si7021 sensor: {str(e)}")
+            self.logger.error(f"Failed to initialize sensors: {str(e)}")
             raise
 
     def _read_si7021(self) -> Tuple[float, float]:
         """Read temperature and humidity from Si7021 sensor."""
         try:
-            while not self.si7021.try_lock():
-                pass
-
-            # Read humidity first (temperature can be read from this measurement)
-            self.si7021.writeto(self.SI7021_ADDRESS, bytes([self.MEASURE_HUMIDITY]))
+            # Trigger humidity measurement
+            self.bus.write_byte(self.SI7021_ADDRESS, self.MEASURE_HUMIDITY)
             time.sleep(0.03)  # Wait for measurement
-            raw_rh = bytearray(3)
-            self.si7021.readfrom_into(self.SI7021_ADDRESS, raw_rh)
 
-            # Read temperature from the humidity measurement
-            self.si7021.writeto(self.SI7021_ADDRESS, bytes([self.READ_TEMP_FROM_PREVIOUS_RH]))
-            raw_temp = bytearray(2)
-            self.si7021.readfrom_into(self.SI7021_ADDRESS, raw_temp)
-
-            self.si7021.unlock()
-
-            # Convert raw humidity
+            # Read humidity
+            raw_rh = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0x00, 2)
             humidity = ((raw_rh[0] << 8) | raw_rh[1])
             humidity = ((125 * humidity) / 65536) - 6
 
-            # Convert raw temperature
+            # Read temperature from previous RH measurement
+            self.bus.write_byte(self.SI7021_ADDRESS, self.READ_TEMP_FROM_PREVIOUS_RH)
+            raw_temp = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0x00, 2)
             temp = ((raw_temp[0] << 8) | raw_temp[1])
             temp = ((175.72 * temp) / 65536) - 46.85
 
@@ -120,61 +109,18 @@ class OLEDStatsDisplay:
 
         except Exception as e:
             self.logger.error(f"Failed to read Si7021: {str(e)}")
-            self.si7021.unlock()
             return None, None
-
-    def _setup_light_sensor(self):
-        """Initialize the BH1750 light sensor."""
-        try:
-            self.light_sensor = busio.I2C(board.SCL, board.SDA)
-            # Check if sensor is present
-            while not self.light_sensor.try_lock():
-                pass
-            addresses = self.light_sensor.scan()
-            self.light_sensor.unlock()
-            if self.LIGHT_I2C_ADDRESS not in addresses:
-                raise RuntimeError(f"No I2C device found at address {hex(self.LIGHT_I2C_ADDRESS)}")
-
-            # Initialize the sensor
-            self._light_sensor_write(self.LIGHT_POWER_ON)  # Turn on
-            self._light_sensor_write(self.LIGHT_RESET)     # Reset
-            self._light_sensor_write(self.LIGHT_CONTINUOUS_HIGH_RES)  # Set mode
-            time.sleep(0.2)  # Wait for first measurement
-
-            self.logger.info(f"Light sensor found at {hex(self.LIGHT_I2C_ADDRESS)}")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize light sensor: {str(e)}")
-            raise
-
-    def _light_sensor_write(self, command):
-        """Write command to light sensor."""
-        try:
-            while not self.light_sensor.try_lock():
-                pass
-            self.light_sensor.writeto(self.LIGHT_I2C_ADDRESS, bytes([command]))
-            self.light_sensor.unlock()
-        except Exception as e:
-            self.light_sensor.unlock()
-            raise e
 
     def _read_light(self) -> float:
         """Read light intensity from BH1750 sensor."""
         try:
-            while not self.light_sensor.try_lock():
-                pass
-
             # Read 2 bytes of light data
-            result = bytearray(2)
-            self.light_sensor.readfrom_into(self.LIGHT_I2C_ADDRESS, result)
-            self.light_sensor.unlock()
-
-            # Convert the raw data to lux
-            light_level = (result[0] << 8 | result[1]) / 1.2
+            data = self.bus.read_i2c_block_data(self.LIGHT_I2C_ADDRESS, 0x00, 2)
+            light_level = (data[0] << 8 | data[1]) / 1.2
             return round(light_level, 1)
 
         except Exception as e:
             self.logger.error(f"Failed to read light: {str(e)}")
-            self.light_sensor.unlock()
             return None
 
     def _get_bitcoin_price(self) -> str:
