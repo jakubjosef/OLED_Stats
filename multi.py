@@ -38,6 +38,10 @@ def init_display(channel):
     return display
 
 # Initialize all three OLED displays
+oled1 = None
+oled2 = None
+oled3 = None
+
 try:
     oled1 = init_display(OLED1_CHANNEL)
     oled2 = init_display(OLED2_CHANNEL)
@@ -63,39 +67,48 @@ def update_displays():
     weekday = now.strftime("%A")
 
     # Draw time on first display
-    select_channel(OLED1_CHANNEL)
-    with canvas(oled1) as draw:
-        draw.text((10, 10), "TIME", font=small_font, fill="white")
-        draw.text((10, 30), current_time, font=font, fill="white")
+    if oled1:
+        select_channel(OLED1_CHANNEL)
+        with canvas(oled1) as draw:
+            draw.text((10, 10), "TIME", font=small_font, fill="white")
+            draw.text((10, 30), current_time, font=font, fill="white")
 
     # Draw date on second display
-    select_channel(OLED2_CHANNEL)
-    with canvas(oled2) as draw:
-        draw.text((10, 10), "DATE", font=small_font, fill="white")
-        draw.text((10, 30), current_date, font=font, fill="white")
+    if oled2:
+        select_channel(OLED2_CHANNEL)
+        with canvas(oled2) as draw:
+            draw.text((10, 10), "DATE", font=small_font, fill="white")
+            draw.text((10, 30), current_date, font=font, fill="white")
 
     # Draw weekday on third display
-    select_channel(OLED3_CHANNEL)
-    with canvas(oled3) as draw:
-        draw.text((10, 10), "DAY", font=small_font, fill="white")
-        draw.text((10, 30), weekday, font=font, fill="white")
+    if oled3:
+        select_channel(OLED3_CHANNEL)
+        with canvas(oled3) as draw:
+            draw.text((10, 10), "DAY", font=small_font, fill="white")
+            draw.text((10, 30), weekday, font=font, fill="white")
 
 # Main loop
 try:
     print("Starting main loop. Press CTRL+C to exit.")
     while True:
-        update_displays()
+        try:
+            update_displays()
+        except Exception as e:
+            print(f"Error updating displays: {e}")
         time.sleep(1)  # Update every second
 except KeyboardInterrupt:
     # Clear displays on exit
-    select_channel(OLED1_CHANNEL)
-    oled1.clear()
+    if oled1:
+        select_channel(OLED1_CHANNEL)
+        oled1.clear()
 
-    select_channel(OLED2_CHANNEL)
-    oled2.clear()
+    if oled2:
+        select_channel(OLED2_CHANNEL)
+        oled2.clear()
 
-    select_channel(OLED3_CHANNEL)
-    oled3.clear()
+    if oled3:
+        select_channel(OLED3_CHANNEL)
+        oled3.clear()
     print("Program ended by user")
 except Exception as e:
     print(f"Error in main loop: {e}")
