@@ -19,9 +19,9 @@ class MultiDisplaySystem:
 
     # I2C Settings
     TCA9548A_ADDRESS = 0x70  # TCA9548A multiplexer address
-    BTC_DISPLAY_CHANNEL = 2  # First display channel
-    CLOCK_DISPLAY_CHANNEL = 3  # Second display channel
-    TEMP_DISPLAY_CHANNEL = 4  # Third display channel
+    BTC_DISPLAY_CHANNEL = 1  # First display channel
+    CLOCK_DISPLAY_CHANNEL = 2  # Second display channel
+    TEMP_DISPLAY_CHANNEL = 3  # Third display channel
 
     # Sensor Settings
     SI7021_ADDRESS = 0x40    # Si7021 temperature/humidity sensor
