@@ -5,7 +5,7 @@ from datetime import datetime
 import smbus
 from luma.core.interface.serial import i2c
 from luma.core.render import canvas
-from luma.oled.device import ssd1306
+from luma.oled.device import sh1106  # Changed from ssd1306 to sh1106
 
 # Initialize I2C bus using smbus
 bus = smbus.SMBus(1)  # Use 1 for Raspberry Pi (or 0 for older versions)
@@ -16,6 +16,7 @@ TCA9548A_ADDRESS = 0x70  # Address of the multiplexer
 # OLED display addresses on the multiplexer
 OLED1_CHANNEL = 2  # First OLED on channel 2
 OLED2_CHANNEL = 3  # Second OLED on channel 3
+OLED3_CHANNEL = 4  # Third OLED on channel 4
 
 # OLED display settings
 WIDTH = 128
@@ -33,14 +34,15 @@ def init_display(channel):
     select_channel(channel)
     # Create luma.oled device
     serial = i2c(port=1, address=OLED_ADDRESS)
-    display = ssd1306(serial, width=WIDTH, height=HEIGHT)
+    display = sh1106(serial, width=WIDTH, height=HEIGHT)  # Changed from ssd1306 to sh1106
     return display
 
-# Initialize both OLED displays
+# Initialize all three OLED displays
 try:
     oled1 = init_display(OLED1_CHANNEL)
     oled2 = init_display(OLED2_CHANNEL)
-    print("Both displays initialized successfully")
+    oled3 = init_display(OLED3_CHANNEL)
+    print("All displays initialized successfully")
 except Exception as e:
     print(f"Error initializing displays: {e}")
 
@@ -58,6 +60,7 @@ def update_displays():
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
     current_date = now.strftime("%Y-%m-%d")
+    weekday = now.strftime("%A")
 
     # Draw time on first display
     select_channel(OLED1_CHANNEL)
@@ -70,6 +73,12 @@ def update_displays():
     with canvas(oled2) as draw:
         draw.text((10, 10), "DATE", font=small_font, fill="white")
         draw.text((10, 30), current_date, font=font, fill="white")
+
+    # Draw weekday on third display
+    select_channel(OLED3_CHANNEL)
+    with canvas(oled3) as draw:
+        draw.text((10, 10), "DAY", font=small_font, fill="white")
+        draw.text((10, 30), weekday, font=font, fill="white")
 
 # Main loop
 try:
@@ -84,6 +93,9 @@ except KeyboardInterrupt:
 
     select_channel(OLED2_CHANNEL)
     oled2.clear()
+
+    select_channel(OLED3_CHANNEL)
+    oled3.clear()
     print("Program ended by user")
 except Exception as e:
     print(f"Error in main loop: {e}")
