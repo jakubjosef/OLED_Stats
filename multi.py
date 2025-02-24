@@ -1,4 +1,26 @@
-import time
+# Try alternate addresses for the third display
+if not oled3:
+    print("Trying alternate address for third display...")
+    # Common alternate address for OLED displays
+    try:
+        select_channel(OLED3_CHANNEL)
+        serial = i2c(port=1, address=0x3D)  # Try alternate address 0x3D
+        oled3 = sh1106(serial, width=WIDTH, height=HEIGHT)
+        print("Successfully initialized third display with alternate address 0x3D")
+    except Exception as e:
+        print(f"Failed with alternate address too: {e}")
+        print("Final attempt: trying with a device reset...")
+        try:
+            # Sometimes resetting the multiplexer helps
+            bus.write_byte(TCA9548A_ADDRESS, 0)  # Reset multiplexer
+            time.sleep(0.1)
+            select_channel(OLED3_CHANNEL)
+            serial = i2c(port=1, address=OLED_ADDRESS)
+            oled3 = sh1106(serial, width=WIDTH, height=HEIGHT)
+            print("Success after reset!")
+        except Exception as e2:
+            print(f"All attempts failed: {e2}")
+            print("Third display will be disabled.")import time
 import time
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
@@ -42,13 +64,43 @@ oled1 = None
 oled2 = None
 oled3 = None
 
-try:
-    oled1 = init_display(OLED1_CHANNEL)
-    oled2 = init_display(OLED2_CHANNEL)
-    oled3 = init_display(OLED3_CHANNEL)
-    print("All displays initialized successfully")
-except Exception as e:
-    print(f"Error initializing displays: {e}")
+# Function to test a channel
+def test_channel(channel):
+    try:
+        print(f"Testing channel {channel}...")
+        select_channel(channel)
+        # Check what devices are on this channel
+        try:
+            # Try to detect devices on this channel
+            print(f"Devices detected on channel {channel}: ", end="")
+            for addr in range(0x3C, 0x3E):  # Common OLED addresses are 0x3C and 0x3D
+                try:
+                    bus.read_byte(addr)
+                    print(f"0x{addr:02X} ", end="")
+                except:
+                    pass
+            print()
+        except Exception as e:
+            print(f"Error scanning channel {channel}: {e}")
+        
+        # Try to initialize display on this channel
+        display = init_display(channel)
+        print(f"Successfully initialized display on channel {channel}")
+        return display
+    except Exception as e:
+        print(f"Failed to initialize display on channel {channel}: {e}")
+        return None
+
+# Test each channel
+print("Testing displays on each channel...")
+oled1 = test_channel(OLED1_CHANNEL)
+oled2 = test_channel(OLED2_CHANNEL)
+oled3 = test_channel(OLED3_CHANNEL)
+
+print("Display initialization status:")
+print(f"Display 1 (channel {OLED1_CHANNEL}): {'OK' if oled1 else 'FAILED'}")
+print(f"Display 2 (channel {OLED2_CHANNEL}): {'OK' if oled2 else 'FAILED'}")
+print(f"Display 3 (channel {OLED3_CHANNEL}): {'OK' if oled3 else 'FAILED'}")
 
 # Try to load a font (use a more common font path)
 try:
@@ -65,21 +117,21 @@ def update_displays():
     current_time = now.strftime("%H:%M:%S")
     current_date = now.strftime("%Y-%m-%d")
     weekday = now.strftime("%A")
-
+    
     # Draw time on first display
     if oled1:
         select_channel(OLED1_CHANNEL)
         with canvas(oled1) as draw:
             draw.text((10, 10), "TIME", font=small_font, fill="white")
             draw.text((10, 30), current_time, font=font, fill="white")
-
+    
     # Draw date on second display
     if oled2:
         select_channel(OLED2_CHANNEL)
         with canvas(oled2) as draw:
             draw.text((10, 10), "DATE", font=small_font, fill="white")
             draw.text((10, 30), current_date, font=font, fill="white")
-
+    
     # Draw weekday on third display
     if oled3:
         select_channel(OLED3_CHANNEL)
@@ -101,11 +153,11 @@ except KeyboardInterrupt:
     if oled1:
         select_channel(OLED1_CHANNEL)
         oled1.clear()
-
+    
     if oled2:
         select_channel(OLED2_CHANNEL)
         oled2.clear()
-
+    
     if oled3:
         select_channel(OLED3_CHANNEL)
         oled3.clear()
