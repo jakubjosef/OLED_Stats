@@ -152,98 +152,52 @@ class MultiDisplaySystem:
                 # Continue trying to initialize other displays
 
     def _read_si7021(self):
-        """Read temperature and humidity from Si7021 sensor using correct procedure"""
+        """Read temperature and humidity from Si7021 sensor using the method from the working script."""
         try:
             # The Si7021 is likely on the main I2C bus, not through the multiplexer
             # Reset the multiplexer to none selected to access the main I2C bus
             self.bus.write_byte(self.TCA9548A_ADDRESS, 0)
             time.sleep(0.1)  # Give it time to reset
 
-            # SI7021 reading process according to official datasheet
+            # Implementation based on the working script provided
             try:
-                # Step 1: Send RH measurement command - NO HOLD MASTER MODE
-                self.bus.write_byte(self.SI7021_ADDRESS, 0xF5)  # Measure RH, No Hold Master
-                time.sleep(0.03)  # Wait for measurement (20-30ms according to datasheet)
+                # First read humidity - No Hold Master Mode
+                self.bus.write_byte(self.SI7021_ADDRESS, 0xF5)  # Start humidity measurement
+                time.sleep(0.025)  # Wait for measurement to complete
 
-                # Step 2: Read RH measurement result
-                # Read 2 bytes (MSB, LSB) - Si7021 doesn't need a read command, just read after measurement command
-                rh_data = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0, 2)
+                # Read the raw humidity data byte by byte
+                data = []
+                for _ in range(2):  # Read 2 bytes
+                    data.append(self.bus.read_byte(self.SI7021_ADDRESS))
 
-                # Step 3: Send temperature measurement command
-                self.bus.write_byte(self.SI7021_ADDRESS, 0xF3)  # Measure Temperature, No Hold Master
-                time.sleep(0.02)  # Wait for measurement (10-12ms according to datasheet)
-
-                # Step 4: Read temperature measurement result
-                temp_data = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0, 2)
-
-                # Calculate values using formulas directly from datasheet
-                raw_humidity = (rh_data[0] << 8) | rh_data[1]
-                # Trim off the status bits (bits 0 and 1 are status bits in some versions)
-                raw_humidity = raw_humidity & 0xFFFC
-
-                raw_temp = (temp_data[0] << 8) | temp_data[1]
-                # Trim off status bits
-                raw_temp = raw_temp & 0xFFFC
-
-                # Calculate actual values using the datasheet formulas
-                # Relative Humidity = ((125 * RH_code) / 65536) - 6
+                raw_humidity = (data[0] << 8) + data[1]
                 humidity = ((125.0 * raw_humidity) / 65536.0) - 6
 
-                # Temperature = ((175.72 * Temp_Code) / 65536) - 46.85
+                # Now read temperature
+                self.bus.write_byte(self.SI7021_ADDRESS, 0xF3)  # Start temperature measurement
+                time.sleep(0.025)  # Wait for measurement to complete
+
+                # Read the raw temperature data byte by byte
+                data = []
+                for _ in range(2):  # Read 2 bytes
+                    data.append(self.bus.read_byte(self.SI7021_ADDRESS))
+
+                raw_temp = (data[0] << 8) + data[1]
                 temp = ((175.72 * raw_temp) / 65536.0) - 46.85
+
+                # Debug log
+                self.logger.debug(f"Raw temp bytes: {data[0]:02x} {data[1]:02x}, Raw value: {raw_temp}")
+                self.logger.debug(f"Raw humidity bytes: {data[0]:02x} {data[1]:02x}, Raw value: {raw_humidity}")
 
                 # Apply reasonable bounds
                 humidity = max(0, min(100, humidity))
                 temp = max(-40, min(125, temp))
 
-                # Debug output
-                self.logger.debug(f"Si7021 - Raw humidity: 0x{raw_humidity:04x}, Calculated: {humidity:.1f}%")
-                self.logger.debug(f"Si7021 - Raw temp: 0x{raw_temp:04x}, Calculated: {temp:.1f}°C")
-
                 return round(temp, 1), round(humidity, 1)
 
             except Exception as e:
                 self.logger.error(f"Error reading Si7021 sensor: {e}")
-                # Try alternative approach - some devices behave slightly differently
-                try:
-                    self.logger.info("Trying alternative Si7021 reading method")
-                    # Reset bus
-                    time.sleep(0.1)
-
-                    # Try reading humidity first using a different approach
-                    self.bus.write_byte(self.SI7021_ADDRESS, 0xE5)  # Read RH with HOLD mode
-                    time.sleep(0.1)
-
-                    # Read result
-                    humidity_msb = self.bus.read_byte(self.SI7021_ADDRESS)
-                    humidity_lsb = self.bus.read_byte(self.SI7021_ADDRESS)
-
-                    # Read temperature
-                    self.bus.write_byte(self.SI7021_ADDRESS, 0xE3)  # Read temp with HOLD mode
-                    time.sleep(0.1)
-
-                    # Read result
-                    temp_msb = self.bus.read_byte(self.SI7021_ADDRESS)
-                    temp_lsb = self.bus.read_byte(self.SI7021_ADDRESS)
-
-                    # Calculate values
-                    raw_humidity = (humidity_msb << 8) | humidity_lsb
-                    raw_temp = (temp_msb << 8) | temp_lsb
-
-                    # Convert using datasheet formula
-                    humidity = ((125.0 * raw_humidity) / 65536.0) - 6
-                    temp = ((175.72 * raw_temp) / 65536.0) - 46.85
-
-                    # Apply reasonable bounds
-                    humidity = max(0, min(100, humidity))
-                    temp = max(-40, min(125, temp))
-
-                    self.logger.info(f"Alternative method success - Temp: {temp:.1f}°C, Humidity: {humidity:.1f}%")
-                    return round(temp, 1), round(humidity, 1)
-
-                except Exception as alt_error:
-                    self.logger.error(f"Alternative method also failed: {alt_error}")
-                    return 22.5, 45.0  # Return reasonable values as fallback
+                return 22.5, 45.0
 
         except Exception as e:
             self.logger.error(f"Failed to read Si7021: {e}")
