@@ -19,9 +19,9 @@ class MultiDisplaySystem:
 
     # I2C Settings
     TCA9548A_ADDRESS = 0x70  # TCA9548A multiplexer address
-    BTC_DISPLAY_CHANNEL = 1  # First display channel
-    CLOCK_DISPLAY_CHANNEL = 2  # Second display channel
-    TEMP_DISPLAY_CHANNEL = 3  # Third display channel
+    BTC_DISPLAY_CHANNEL = 2  # First display channel
+    CLOCK_DISPLAY_CHANNEL = 3  # Second display channel
+    TEMP_DISPLAY_CHANNEL = 4  # Third display channel
 
     # Sensor Settings
     SI7021_ADDRESS = 0x40    # Si7021 temperature/humidity sensor
@@ -33,11 +33,21 @@ class MultiDisplaySystem:
 
     def __init__(self):
         # Configure logging
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
         self.logger = logging.getLogger(__name__)
 
         # Initialize I2C bus
         self.bus = SMBus(self.I2C_PORT)
+
+        # Reset multiplexer to make sure we start clean
+        try:
+            self.bus.write_byte(self.TCA9548A_ADDRESS, 0)
+            self.logger.info(f"Reset TCA9548A multiplexer at address 0x{self.TCA9548A_ADDRESS:02X}")
+        except Exception as e:
+            self.logger.error(f"Failed to reset multiplexer: {e}")
 
         # Initialize displays
         self.displays = {}
@@ -75,56 +85,99 @@ class MultiDisplaySystem:
 
     def _setup_displays(self):
         """Initialize all three OLED displays"""
-        try:
-            # Initialize Bitcoin price display
-            self.select_channel(self.BTC_DISPLAY_CHANNEL)
-            serial = i2c(port=self.I2C_PORT, address=self.OLED_I2C_ADDRESS)
-            self.displays['btc'] = sh1106(serial, rotate=0)
-            self.logger.info(f"BTC display initialized on channel {self.BTC_DISPLAY_CHANNEL}")
+        display_channels = [
+            ('btc', self.BTC_DISPLAY_CHANNEL),
+            ('clock', self.CLOCK_DISPLAY_CHANNEL),
+            ('temp', self.TEMP_DISPLAY_CHANNEL)
+        ]
 
-            # Initialize clock display
-            self.select_channel(self.CLOCK_DISPLAY_CHANNEL)
-            serial = i2c(port=self.I2C_PORT, address=self.OLED_I2C_ADDRESS)
-            self.displays['clock'] = sh1106(serial, rotate=0)
-            self.logger.info(f"Clock display initialized on channel {self.CLOCK_DISPLAY_CHANNEL}")
+        for name, channel in display_channels:
+            try:
+                # First reset the channel
+                self.select_channel(channel)
+                time.sleep(0.1)
 
-            # Initialize temperature display
-            self.select_channel(self.TEMP_DISPLAY_CHANNEL)
-            serial = i2c(port=self.I2C_PORT, address=self.OLED_I2C_ADDRESS)
-            self.displays['temp'] = sh1106(serial, rotate=0)
-            self.logger.info(f"Temperature display initialized on channel {self.TEMP_DISPLAY_CHANNEL}")
+                # Scan for devices on this channel
+                try:
+                    detected = False
+                    for addr in range(0x3C, 0x3E):  # Common OLED addresses are 0x3C and 0x3D
+                        try:
+                            self.bus.read_byte(addr)
+                            self.logger.info(f"Device detected at address 0x{addr:02X} on channel {channel}")
+                            detected = True
+                            # If device found at address other than expected, update the address
+                            if addr != self.OLED_I2C_ADDRESS:
+                                self.logger.info(f"Using detected address 0x{addr:02X} instead of default 0x{self.OLED_I2C_ADDRESS:02X}")
+                                serial = i2c(port=self.I2C_PORT, address=addr)
+                            else:
+                                serial = i2c(port=self.I2C_PORT, address=self.OLED_I2C_ADDRESS)
+                            break
+                        except:
+                            pass
 
-        except Exception as e:
-            self.logger.error(f"Failed to initialize displays: {e}")
-            raise
+                    if not detected:
+                        self.logger.warning(f"No display detected on channel {channel}, using default address")
+                        serial = i2c(port=self.I2C_PORT, address=self.OLED_I2C_ADDRESS)
+                except Exception as e:
+                    self.logger.error(f"Error scanning channel {channel}: {e}")
+                    serial = i2c(port=self.I2C_PORT, address=self.OLED_I2C_ADDRESS)
+
+                # Initialize display with detected or default address
+                self.displays[name] = sh1106(serial, rotate=0)
+                self.logger.info(f"{name.upper()} display initialized on channel {channel}")
+
+                # Quick display test
+                with canvas(self.displays[name]) as draw:
+                    draw.text((10, 20), f"INIT {name.upper()}", fill="white")
+                time.sleep(0.5)
+
+            except Exception as e:
+                self.logger.error(f"Failed to initialize {name} display on channel {channel}: {e}")
+                # Continue trying to initialize other displays
 
     def _read_si7021(self):
         """Read temperature and humidity from Si7021 sensor"""
         try:
-            # Select the correct channel first
-            # Note: The Si7021 might be on a different channel or directly on the I2C bus
-            # If it's directly on the I2C bus, you may need to skip channel selection here
-            # Otherwise, set it to the correct channel where Si7021 is connected
+            # The Si7021 is likely on the main I2C bus, not through the multiplexer
+            # Reset the multiplexer to none selected to access the main I2C bus
+            self.bus.write_byte(self.TCA9548A_ADDRESS, 0)
+            time.sleep(0.1)  # Give it time to reset
 
             # First read humidity - No Hold Master Mode
             self.bus.write_byte(self.SI7021_ADDRESS, self.MEASURE_HUMIDITY)
-            time.sleep(0.025)  # Wait for measurement to complete
+            time.sleep(0.03)  # Wait for measurement to complete
 
-            # Read the raw humidity data
-            data = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0, 2)
-            raw_humidity = (data[0] << 8) + data[1]
-            humidity = ((125.0 * raw_humidity) / 65536.0) - 6
+            # Read the raw humidity data (need to read from the device after commanding measurement)
+            try:
+                data = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0, 3)  # Read 3 bytes including CRC
+                raw_humidity = (data[0] << 8) + data[1]
+                humidity = ((125.0 * raw_humidity) / 65536.0) - 6
+                self.logger.debug(f"Raw humidity data: {data[0]:02x} {data[1]:02x}, value: {raw_humidity}")
+            except Exception as e:
+                self.logger.error(f"Failed to read humidity: {e}")
+                humidity = None
 
             # Now read temperature
             self.bus.write_byte(self.SI7021_ADDRESS, self.MEASURE_TEMPERATURE)
-            time.sleep(0.025)  # Wait for measurement to complete
+            time.sleep(0.03)  # Wait for measurement to complete
 
             # Read the raw temperature data
-            data = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0, 2)
-            raw_temp = (data[0] << 8) + data[1]
-            temp = ((175.72 * raw_temp) / 65536.0) - 46.85
+            try:
+                data = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0, 3)  # Read 3 bytes including CRC
+                raw_temp = (data[0] << 8) + data[1]
+                temp = ((175.72 * raw_temp) / 65536.0) - 46.85
+                self.logger.debug(f"Raw temp data: {data[0]:02x} {data[1]:02x}, value: {raw_temp}")
+            except Exception as e:
+                self.logger.error(f"Failed to read temperature: {e}")
+                temp = None
 
-            return round(temp, 1), round(humidity, 1)
+            # Format the results
+            if temp is not None:
+                temp = round(temp, 1)
+            if humidity is not None:
+                humidity = round(humidity, 1)
+
+            return temp, humidity
 
         except Exception as e:
             self.logger.error(f"Failed to read Si7021: {e}")
@@ -147,18 +200,44 @@ class MultiDisplaySystem:
             return "Error"
 
     def _get_outside_weather(self):
-        """Get outside temperature and humidity for Prague"""
+        """Get outside temperature and humidity for Prague using WeatherAPI.com"""
         try:
-            # Using OpenWeatherMap API (you'll need to register for a free API key)
-            API_KEY = "YOUR_API_KEY"  # Replace with your API key
-            url = f"https://api.openweathermap.org/data/2.5/weather?q=Prague&units=metric&appid={API_KEY}"
+            # Using WeatherAPI.com - free tier with no API key required for basic requests
+            url = "https://weatherapi-com.p.rapidapi.com/current.json"
 
-            response = requests.get(url)
-            response.raise_for_status()
-            data = response.json()
+            querystring = {"q": "Prague"}
 
-            temp = data["main"]["temp"]
-            humidity = data["main"]["humidity"]
+            headers = {
+                "X-RapidAPI-Key": "SIGN_UP_FOR_KEY",  # Replace with your RapidAPI key
+                "X-RapidAPI-Host": "weatherapi-com.p.rapidapi.com"
+            }
+
+            # Fallback to Open-Meteo (completely free, no API key)
+            if headers["X-RapidAPI-Key"] == "SIGN_UP_FOR_KEY":
+                self.logger.info("Using Open-Meteo API as fallback")
+                # Prague coordinates: latitude 50.08, longitude 14.42
+                url = "https://api.open-meteo.com/v1/forecast"
+                params = {
+                    "latitude": 50.08,
+                    "longitude": 14.42,
+                    "current": "temperature_2m,relative_humidity_2m",
+                    "timezone": "Europe/Prague"
+                }
+
+                response = requests.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+
+                temp = data["current"]["temperature_2m"]
+                humidity = data["current"]["relative_humidity_2m"]
+            else:
+                # Use RapidAPI WeatherAPI if key is provided
+                response = requests.get(url, headers=headers, params=querystring)
+                response.raise_for_status()
+                data = response.json()
+
+                temp = data["current"]["temp_c"]
+                humidity = data["current"]["humidity"]
 
             return round(temp, 1), humidity
         except Exception as e:
@@ -172,11 +251,37 @@ class MultiDisplaySystem:
             self.logger.info("Updating slow-refresh data (BTC, temperatures)")
 
             # Update Bitcoin price
-            self.btc_price = self._get_bitcoin_price()
+            try:
+                btc_price = self._get_bitcoin_price()
+                if btc_price != "Error":
+                    self.btc_price = btc_price
+                    self.logger.info(f"Updated BTC price: {self.btc_price}")
+                else:
+                    self.logger.warning("Failed to update BTC price")
+            except Exception as e:
+                self.logger.error(f"Error updating BTC price: {e}")
 
-            # Update temperature data
-            self.inside_temp, self.inside_humidity = self._read_si7021()
-            self.outside_temp, self.outside_humidity = self._get_outside_weather()
+            # Update inside temperature data
+            try:
+                temp, humidity = self._read_si7021()
+                if temp is not None and humidity is not None:
+                    self.inside_temp, self.inside_humidity = temp, humidity
+                    self.logger.info(f"Updated inside conditions: {self.inside_temp}°C, {self.inside_humidity}%")
+                else:
+                    self.logger.warning("Failed to read inside temperature/humidity")
+            except Exception as e:
+                self.logger.error(f"Error reading inside sensors: {e}")
+
+            # Update outside temperature data
+            try:
+                temp, humidity = self._get_outside_weather()
+                if temp is not None and humidity is not None:
+                    self.outside_temp, self.outside_humidity = temp, humidity
+                    self.logger.info(f"Updated outside conditions: {self.outside_temp}°C, {self.outside_humidity}%")
+                else:
+                    self.logger.warning("Failed to get outside weather data")
+            except Exception as e:
+                self.logger.error(f"Error getting outside weather: {e}")
 
             self.last_slow_update = current_time
 
