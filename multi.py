@@ -159,6 +159,16 @@ class MultiDisplaySystem:
             self.bus.write_byte(self.TCA9548A_ADDRESS, 0)
             time.sleep(0.1)  # Give it time to reset
 
+            # Try to detect if sensor is present
+            try:
+                # Try reading the electronic ID 1st byte - command 0xFA 0x0F
+                self.bus.write_byte_data(self.SI7021_ADDRESS, 0xFA, 0x0F)
+                time.sleep(0.05)
+                id_bytes = self.bus.read_i2c_block_data(self.SI7021_ADDRESS, 0, 8)
+                self.logger.debug(f"Si7021 ID: {[hex(b) for b in id_bytes]}")
+            except Exception as e:
+                self.logger.warning(f"Si7021 ID read failed: {e} - sensor may not be connected properly")
+
             # First read humidity (using appropriate command and conversion)
             # Write the "Measure RH, No Hold Master Mode" command
             self.bus.write_byte(self.SI7021_ADDRESS, self.MEASURE_HUMIDITY)
@@ -174,7 +184,8 @@ class MultiDisplaySystem:
 
             # Boundary check for impossible values
             if humidity < 0:
-                humidity = 0
+                self.logger.warning(f"Invalid humidity reading: {humidity}%, raw: {raw_humidity}, using estimated value")
+                humidity = 35.0  # Use a reasonable estimate for indoor humidity
             elif humidity > 100:
                 humidity = 100
 
@@ -386,7 +397,7 @@ class MultiDisplaySystem:
             # Draw Inside (Uvnitř) section at the top half
             draw.text((5, 0), "Uvnitř:", font=self.small_font, fill="white")
 
-            # Draw inside temperature with large numbers - moved up 5 lines
+            # Draw inside temperature with large numbers
             if self.inside_temp is not None:
                 # Format the temperature with larger font
                 temp_text = f"{self.inside_temp}"
@@ -400,12 +411,12 @@ class MultiDisplaySystem:
             else:
                 draw.text((40, 3), "N/A", font=self.temp_font, fill="white")
 
-            # Draw humidity if available - also adjust to match new temperature position
+            # Draw humidity if available - moved down to avoid overlap
             if self.inside_humidity is not None:
-                draw.text((5, 3), f"{self.inside_humidity}%", font=self.medium_font, fill="white")
+                draw.text((5, 18), f"{self.inside_humidity}%", font=self.medium_font, fill="white")
 
-            # Draw Outside (Venku) section in the bottom half - moved up to prevent off-screen content
-            draw.text((5, 30), "Venku:", font=self.small_font, fill="white")
+            # Draw Outside (Venku) section in the bottom half
+            draw.text((5, 33), "Venku:", font=self.small_font, fill="white")
 
             # Draw outside temperature with large numbers
             if self.outside_temp is not None:
@@ -423,7 +434,7 @@ class MultiDisplaySystem:
 
             # Draw humidity if available
             if self.outside_humidity is not None:
-                draw.text((5, 38), f"{self.outside_humidity}%", font=self.medium_font, fill="white")
+                draw.text((5, 48), f"{self.outside_humidity}%", font=self.medium_font, fill="white")
 
     def update_displays(self):
         """Update all displays with current data"""
