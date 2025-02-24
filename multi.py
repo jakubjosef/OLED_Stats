@@ -370,21 +370,18 @@ class MultiDisplaySystem:
                 temp_bbox = draw.textbbox((0, 0), temp_text, font=self.temp_font)
                 temp_width = temp_bbox[2] - temp_bbox[0]
                 # Position the temperature with right alignment
-                draw.text((self.WIDTH - temp_width - 20, 10), temp_text, font=self.temp_font, fill="white")
+                draw.text((self.WIDTH - temp_width - 20, 8), temp_text, font=self.temp_font, fill="white")
                 # Add the degree symbol and C
-                draw.text((self.WIDTH - 18, 12), "°C", font=self.small_font, fill="white")
+                draw.text((self.WIDTH - 18, 10), "°C", font=self.small_font, fill="white")
             else:
-                draw.text((40, 10), "N/A", font=self.temp_font, fill="white")
+                draw.text((40, 8), "N/A", font=self.temp_font, fill="white")
 
             # Draw humidity if available
             if self.inside_humidity is not None:
                 draw.text((5, 15), f"{self.inside_humidity}%", font=self.medium_font, fill="white")
 
-            # Horizontal divider line
-            draw.line((0, 31, self.WIDTH, 31), fill="white", width=1)
-
-            # Draw Outside (Venku) section in the bottom half
-            draw.text((5, 33), "Venku:", font=self.small_font, fill="white")
+            # Draw Outside (Venku) section in the bottom half - moved up to prevent off-screen content
+            draw.text((5, 30), "Venku:", font=self.small_font, fill="white")
 
             # Draw outside temperature with large numbers
             if self.outside_temp is not None:
@@ -394,15 +391,15 @@ class MultiDisplaySystem:
                 temp_bbox = draw.textbbox((0, 0), temp_text, font=self.temp_font)
                 temp_width = temp_bbox[2] - temp_bbox[0]
                 # Position the temperature with right alignment
-                draw.text((self.WIDTH - temp_width - 20, 43), temp_text, font=self.temp_font, fill="white")
+                draw.text((self.WIDTH - temp_width - 20, 38), temp_text, font=self.temp_font, fill="white")
                 # Add the degree symbol and C
-                draw.text((self.WIDTH - 18, 45), "°C", font=self.small_font, fill="white")
+                draw.text((self.WIDTH - 18, 40), "°C", font=self.small_font, fill="white")
             else:
-                draw.text((40, 43), "N/A", font=self.temp_font, fill="white")
+                draw.text((40, 38), "N/A", font=self.temp_font, fill="white")
 
             # Draw humidity if available
             if self.outside_humidity is not None:
-                draw.text((5, 48), f"{self.outside_humidity}%", font=self.medium_font, fill="white")
+                draw.text((5, 45), f"{self.outside_humidity}%", font=self.medium_font, fill="white")
 
     def update_displays(self):
         """Update all displays with current data"""
