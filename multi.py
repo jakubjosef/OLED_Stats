@@ -64,6 +64,22 @@ class MultiDisplaySystem:
         # Initialize fonts
         try:
             self.large_font = ImageFont.truetype('PixelOperator.ttf', 32)
+            self.temp_font = ImageFont.truetype('PixelOperator.ttf', 28)  # Larger font for temps
+            self.medium_font = ImageFont.truetype('PixelOperator.ttf', 20)
+            self.small_font = ImageFont.truetype('PixelOperator.ttf', 14)
+            self.tiny_font = ImageFont.truetype('PixelOperator.ttf', 10)  # For units
+        except OSError:
+            self.logger.warning("PixelOperator font not found, falling back to default")
+            # Use proportional sizes with default font
+            self.large_font = ImageFont.load_default()
+            self.temp_font = ImageFont.load_default()
+            self.medium_font = ImageFont.load_default()
+            self.small_font = ImageFont.load_default()
+            self.tiny_font = ImageFont.load_default()
+
+        # Initialize fonts
+        try:
+            self.large_font = ImageFont.truetype('PixelOperator.ttf', 32)
             self.medium_font = ImageFont.truetype('PixelOperator.ttf', 20)
             self.small_font = ImageFont.truetype('PixelOperator.ttf', 14)
         except OSError:
@@ -337,31 +353,56 @@ class MultiDisplaySystem:
             draw.text((weekday_x, 52), weekday, font=self.small_font, fill="white")
 
     def _update_temp_display(self):
-        """Update the temperature display"""
+        """Update the temperature display with larger, more readable numbers"""
         if 'temp' not in self.displays:
             return
 
         self.select_channel(self.TEMP_DISPLAY_CHANNEL)
         with canvas(self.displays['temp']) as draw:
-            # Draw inside header
-            draw.text((5, 0), "Inside:", font=self.small_font, fill="white")
+            # Draw Inside (Uvnitř) section at the top half
+            draw.text((5, 0), "Uvnitř:", font=self.small_font, fill="white")
 
-            # Draw inside temperature and humidity
-            if self.inside_temp is not None and self.inside_humidity is not None:
-                inside_text = f"{self.inside_temp}°C {self.inside_humidity}%"
-                draw.text((5, 14), inside_text, font=self.medium_font, fill="white")
+            # Draw inside temperature with large numbers
+            if self.inside_temp is not None:
+                # Format the temperature with larger font
+                temp_text = f"{self.inside_temp}"
+                # Calculate width to right-align
+                temp_bbox = draw.textbbox((0, 0), temp_text, font=self.temp_font)
+                temp_width = temp_bbox[2] - temp_bbox[0]
+                # Position the temperature with right alignment
+                draw.text((self.WIDTH - temp_width - 20, 10), temp_text, font=self.temp_font, fill="white")
+                # Add the degree symbol and C
+                draw.text((self.WIDTH - 18, 12), "°C", font=self.small_font, fill="white")
             else:
-                draw.text((5, 14), "No data", font=self.medium_font, fill="white")
+                draw.text((40, 10), "N/A", font=self.temp_font, fill="white")
 
-            # Draw outside header
-            draw.text((5, 34), "Outside (Prague):", font=self.small_font, fill="white")
+            # Draw humidity if available
+            if self.inside_humidity is not None:
+                draw.text((5, 15), f"{self.inside_humidity}%", font=self.medium_font, fill="white")
 
-            # Draw outside temperature and humidity
-            if self.outside_temp is not None and self.outside_humidity is not None:
-                outside_text = f"{self.outside_temp}°C {self.outside_humidity}%"
-                draw.text((5, 48), outside_text, font=self.medium_font, fill="white")
+            # Horizontal divider line
+            draw.line((0, 31, self.WIDTH, 31), fill="white", width=1)
+
+            # Draw Outside (Venku) section in the bottom half
+            draw.text((5, 33), "Venku:", font=self.small_font, fill="white")
+
+            # Draw outside temperature with large numbers
+            if self.outside_temp is not None:
+                # Format the temperature with larger font
+                temp_text = f"{self.outside_temp}"
+                # Calculate width to right-align
+                temp_bbox = draw.textbbox((0, 0), temp_text, font=self.temp_font)
+                temp_width = temp_bbox[2] - temp_bbox[0]
+                # Position the temperature with right alignment
+                draw.text((self.WIDTH - temp_width - 20, 43), temp_text, font=self.temp_font, fill="white")
+                # Add the degree symbol and C
+                draw.text((self.WIDTH - 18, 45), "°C", font=self.small_font, fill="white")
             else:
-                draw.text((5, 48), "No data", font=self.medium_font, fill="white")
+                draw.text((40, 43), "N/A", font=self.temp_font, fill="white")
+
+            # Draw humidity if available
+            if self.outside_humidity is not None:
+                draw.text((5, 48), f"{self.outside_humidity}%", font=self.medium_font, fill="white")
 
     def update_displays(self):
         """Update all displays with current data"""
