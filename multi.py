@@ -1,4 +1,25 @@
-import time
+def _update_data(self):
+        """Update all slow-refreshing data (every 5 minutes)"""
+        cur    def _get_usd_czk_rate(self):
+        """Get current USD to CZK exchange rate"""
+        try:
+            # Using Open Exchange Rates API (free tier with no API key required)
+            url = "https://open.er-api.com/v6/latest/USD"
+
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+
+            if data["result"] == "success" and "CZK" in data["rates"]:
+                rate = data["rates"]["CZK"]
+                return f"1 USD = {rate:.2f} CZK"
+            else:
+                self.logger.warning("USD/CZK rate not found in response")
+                return "USD/CZK: N/A"
+
+        except Exception as e:
+            self.logger.error(f"Failed to get USD/CZK rate: {e}")
+            return "USD/CZK: Error"import time
 from datetime import datetime
 import logging
 import requests
@@ -55,6 +76,7 @@ class MultiDisplaySystem:
 
         # Data storage
         self.btc_price = "Loading..."
+        self.usd_czk_rate = "Loading..."
         self.outside_temp = None
         self.outside_humidity = None
         self.inside_temp = None
