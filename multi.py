@@ -17,7 +17,7 @@ def _get_usd_czk_rate(self):
 
         except Exception as e:
             self.logger.error(f"Failed to get USD/CZK rate: {e}")
-            return "USD/CZK: Error"import time
+            return "USD/CZK: Error"
 from datetime import datetime
 import logging
 import requests
