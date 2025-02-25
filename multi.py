@@ -327,14 +327,28 @@ class MultiDisplaySystem:
             draw.text((label_x, 45), label, font=self.small_font, fill="white")
 
     def _update_clock_display(self):
-        """Update the clock display"""
+        """Update the clock display with Czech weekday names"""
         if 'clock' not in self.displays:
             return
 
         now = datetime.now()
         time_str = now.strftime("%H:%M:%S")
         date_str = now.strftime("%Y-%m-%d")
-        weekday = now.strftime("%A")
+
+        # Czech weekday names
+        czech_weekdays = {
+            0: "Pondělí",    # Monday
+            1: "Úterý",      # Tuesday
+            2: "Středa",     # Wednesday
+            3: "Čtvrtek",    # Thursday
+            4: "Pátek",      # Friday
+            5: "Sobota",     # Saturday
+            6: "Neděle"      # Sunday
+        }
+
+        # Get weekday as integer (0 = Monday, 6 = Sunday)
+        weekday_num = now.weekday()
+        weekday = czech_weekdays[weekday_num]
 
         self.select_channel(self.CLOCK_DISPLAY_CHANNEL)
         with canvas(self.displays['clock']) as draw:
@@ -350,7 +364,7 @@ class MultiDisplaySystem:
             date_x = (self.WIDTH - date_width) // 2
             draw.text((date_x, 40), date_str, font=self.small_font, fill="white")
 
-            # Draw weekday below date
+            # Draw Czech weekday name below date
             weekday_bbox = draw.textbbox((0, 0), weekday, font=self.small_font)
             weekday_width = weekday_bbox[2] - weekday_bbox[0]
             weekday_x = (self.WIDTH - weekday_width) // 2
