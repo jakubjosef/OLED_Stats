@@ -1,6 +1,4 @@
-def _update_data(self):
-        """Update all slow-refreshing data (every 5 minutes)"""
-        cur    def _get_usd_czk_rate(self):
+def _get_usd_czk_rate(self):
         """Get current USD to CZK exchange rate"""
         try:
             # Using Open Exchange Rates API (free tier with no API key required)
@@ -290,7 +288,7 @@ class MultiDisplaySystem:
         """Update all slow-refreshing data (every 5 minutes)"""
         current_time = time.time()
         if current_time - self.last_slow_update >= self.REFRESH_RATE_SLOW:
-            self.logger.info("Updating slow-refresh data (BTC, temperatures)")
+            self.logger.info("Updating slow-refresh data (BTC, USD/CZK, temperatures)")
 
             # Update Bitcoin price
             try:
@@ -302,6 +300,17 @@ class MultiDisplaySystem:
                     self.logger.warning("Failed to update BTC price")
             except Exception as e:
                 self.logger.error(f"Error updating BTC price: {e}")
+
+            # Update USD/CZK rate
+            try:
+                usd_czk_rate = self._get_usd_czk_rate()
+                if "Error" not in usd_czk_rate:
+                    self.usd_czk_rate = usd_czk_rate
+                    self.logger.info(f"Updated USD/CZK rate: {self.usd_czk_rate}")
+                else:
+                    self.logger.warning("Failed to update USD/CZK rate")
+            except Exception as e:
+                self.logger.error(f"Error updating USD/CZK rate: {e}")
 
             # Update inside temperature data
             try:
@@ -328,7 +337,7 @@ class MultiDisplaySystem:
             self.last_slow_update = current_time
 
     def _update_btc_display(self):
-        """Update the Bitcoin price display"""
+        """Update the Bitcoin price display with USD/CZK rate"""
         if 'btc' not in self.displays:
             return
 
@@ -339,14 +348,20 @@ class MultiDisplaySystem:
             price_bbox = draw.textbbox((0, 0), price_text, font=self.large_font)
             price_width = price_bbox[2] - price_bbox[0]
             price_x = (self.WIDTH - price_width) // 2
-            draw.text((price_x, 10), price_text, font=self.large_font, fill="white")
+            draw.text((price_x, 5), price_text, font=self.large_font, fill="white")
 
             # Draw BTC/USD label below price
             label = "BTC/USD"
             label_bbox = draw.textbbox((0, 0), label, font=self.small_font)
             label_width = label_bbox[2] - label_bbox[0]
             label_x = (self.WIDTH - label_width) // 2
-            draw.text((label_x, 45), label, font=self.small_font, fill="white")
+            draw.text((label_x, 40), label, font=self.small_font, fill="white")
+
+            # Draw USD/CZK rate at the bottom
+            rate_bbox = draw.textbbox((0, 0), self.usd_czk_rate, font=self.small_font)
+            rate_width = rate_bbox[2] - rate_bbox[0]
+            rate_x = (self.WIDTH - rate_width) // 2
+            draw.text((rate_x, 52), self.usd_czk_rate, font=self.small_font, fill="white")
 
     def _update_clock_display(self):
         """Update the clock display with Czech weekday names"""
