@@ -422,7 +422,7 @@ class MultiDisplaySystem:
             draw.text((date_x, 26), date_str, font=self.small_font, fill="white")
 
             # Draw Czech weekday name below date
-            weekday_bbox = draw.textbbox((0, 0), weekday, font=self.small_font)
+            weekday_bbox = draw.textbbox((0, 0), weekday, font=self.medium_large_font)
             weekday_width = weekday_bbox[2] - weekday_bbox[0]
             weekday_x = (self.WIDTH - weekday_width) // 2
             draw.text((weekday_x, 40), weekday, font=self.medium_large_font, fill="white")
