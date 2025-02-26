@@ -413,19 +413,19 @@ class MultiDisplaySystem:
             time_bbox = draw.textbbox((0, 0), time_str, font=self.large_font)
             time_width = time_bbox[2] - time_bbox[0]
             time_x = (self.WIDTH - time_width) // 2
-            draw.text((time_x, 5), time_str, font=self.large_font, fill="white")
+            draw.text((time_x, -5), time_str, font=self.large_font, fill="white")
 
             # Draw date below time
             date_bbox = draw.textbbox((0, 0), date_str, font=self.small_font)
             date_width = date_bbox[2] - date_bbox[0]
             date_x = (self.WIDTH - date_width) // 2
-            draw.text((date_x, 40), date_str, font=self.small_font, fill="white")
+            draw.text((date_x, 26), date_str, font=self.small_font, fill="white")
 
             # Draw Czech weekday name below date
             weekday_bbox = draw.textbbox((0, 0), weekday, font=self.small_font)
             weekday_width = weekday_bbox[2] - weekday_bbox[0]
             weekday_x = (self.WIDTH - weekday_width) // 2
-            draw.text((weekday_x, 52), weekday, font=self.small_font, fill="white")
+            draw.text((weekday_x, 40), weekday, font=self.medium_large_font, fill="white")
 
     def _update_temp_display(self):
         """Update the temperature display with larger, more readable numbers"""
