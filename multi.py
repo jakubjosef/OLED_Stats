@@ -65,6 +65,24 @@ class MultiDisplaySystem:
         # Initialize fonts
         try:
             self.large_font = ImageFont.truetype('PixelOperator.ttf', 32)
+            self.medium_large_font = ImageFont.truetype('PixelOperator.ttf', 24)  # New font size for USD/CZK
+            self.temp_font = ImageFont.truetype('PixelOperator.ttf', 28)  # Larger font for temps
+            self.medium_font = ImageFont.truetype('PixelOperator.ttf', 20)
+            self.small_font = ImageFont.truetype('PixelOperator.ttf', 14)
+            self.tiny_font = ImageFont.truetype('PixelOperator.ttf', 10)  # For units
+        except OSError:
+            self.logger.warning("PixelOperator font not found, falling back to default")
+            # Use proportional sizes with default font
+            self.large_font = ImageFont.load_default()
+            self.medium_large_font = ImageFont.load_default()
+            self.temp_font = ImageFont.load_default()
+            self.medium_font = ImageFont.load_default()
+            self.small_font = ImageFont.load_default()
+            self.tiny_font = ImageFont.load_default()
+
+        # Initialize fonts
+        try:
+            self.large_font = ImageFont.truetype('PixelOperator.ttf', 32)
             self.temp_font = ImageFont.truetype('PixelOperator.ttf', 28)  # Larger font for temps
             self.medium_font = ImageFont.truetype('PixelOperator.ttf', 20)
             self.small_font = ImageFont.truetype('PixelOperator.ttf', 14)
@@ -223,6 +241,7 @@ class MultiDisplaySystem:
     def _get_usd_czk_rate(self):
         """Get current USD to CZK exchange rate"""
         try:
+            # Using Open Exchange Rates API (free tier with no API key required)
             url = "https://open.er-api.com/v6/latest/USD"
 
             response = requests.get(url)
@@ -344,25 +363,25 @@ class MultiDisplaySystem:
 
         self.select_channel(self.BTC_DISPLAY_CHANNEL)
         with canvas(self.displays['btc']) as draw:
-            # Draw Bitcoin price in large font
+            # Draw Bitcoin price in large font (moved up)
             price_text = self.btc_price
             price_bbox = draw.textbbox((0, 0), price_text, font=self.large_font)
             price_width = price_bbox[2] - price_bbox[0]
             price_x = (self.WIDTH - price_width) // 2
-            draw.text((price_x, 5), price_text, font=self.large_font, fill="white")
+            draw.text((price_x, 2), price_text, font=self.large_font, fill="white")
 
-            # Draw BTC/USD label below price
+            # Draw BTC/USD label below price (moved up)
             label = "BTC/USD"
             label_bbox = draw.textbbox((0, 0), label, font=self.small_font)
             label_width = label_bbox[2] - label_bbox[0]
             label_x = (self.WIDTH - label_width) // 2
-            draw.text((label_x, 40), label, font=self.small_font, fill="white")
+            draw.text((label_x, 35), label, font=self.small_font, fill="white")
 
-            # Draw USD/CZK rate at the bottom
-            rate_bbox = draw.textbbox((0, 0), self.usd_czk_rate, font=self.small_font)
+            # Draw USD/CZK rate at the bottom with larger font
+            rate_bbox = draw.textbbox((0, 0), self.usd_czk_rate, font=self.medium_large_font)
             rate_width = rate_bbox[2] - rate_bbox[0]
             rate_x = (self.WIDTH - rate_width) // 2
-            draw.text((rate_x, 52), self.usd_czk_rate, font=self.small_font, fill="white")
+            draw.text((rate_x, 47), self.usd_czk_rate, font=self.medium_large_font, fill="white")
 
     def _update_clock_display(self):
         """Update the clock display with Czech weekday names"""
