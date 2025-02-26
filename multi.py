@@ -445,9 +445,9 @@ class MultiDisplaySystem:
                 temp_bbox = draw.textbbox((0, 0), temp_text, font=self.temp_font)
                 temp_width = temp_bbox[2] - temp_bbox[0]
                 # Position the temperature with right alignment
-                draw.text((self.WIDTH - temp_width - 20, 3), temp_text, font=self.temp_font, fill="white")
+                draw.text((self.WIDTH - temp_width - 20, 0), temp_text, font=self.temp_font, fill="white")
                 # Add the degree symbol and C
-                draw.text((self.WIDTH - 18, 5), "°C", font=self.small_font, fill="white")
+                draw.text((self.WIDTH - 18, 0), "°C", font=self.small_font, fill="white")
             else:
                 draw.text((40, 3), "N/A", font=self.temp_font, fill="white")
 
