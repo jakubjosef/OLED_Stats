@@ -250,10 +250,10 @@ class MultiDisplaySystem:
 
             if data["result"] == "success" and "CZK" in data["rates"]:
                 rate = data["rates"]["CZK"]
-                return f"1 USD = {rate:.2f} CZK"
+                return f"$/CZK: {rate:.2f}"
             else:
                 self.logger.warning("USD/CZK rate not found in response")
-                return "USD/CZK: N/A"
+                return "$/CZK: N/A"
 
         except Exception as e:
             self.logger.error(f"Failed to get USD/CZK rate: {e}")
@@ -368,20 +368,20 @@ class MultiDisplaySystem:
             price_bbox = draw.textbbox((0, 0), price_text, font=self.large_font)
             price_width = price_bbox[2] - price_bbox[0]
             price_x = (self.WIDTH - price_width) // 2
-            draw.text((price_x, 2), price_text, font=self.large_font, fill="white")
+            draw.text((price_x, -5), price_text, font=self.large_font, fill="white")
 
             # Draw BTC/USD label below price (moved up)
             label = "BTC/USD"
             label_bbox = draw.textbbox((0, 0), label, font=self.small_font)
             label_width = label_bbox[2] - label_bbox[0]
             label_x = (self.WIDTH - label_width) // 2
-            draw.text((label_x, 35), label, font=self.small_font, fill="white")
+            draw.text((label_x, 26), label, font=self.small_font, fill="white")
 
             # Draw USD/CZK rate at the bottom with larger font
             rate_bbox = draw.textbbox((0, 0), self.usd_czk_rate, font=self.medium_large_font)
             rate_width = rate_bbox[2] - rate_bbox[0]
             rate_x = (self.WIDTH - rate_width) // 2
-            draw.text((rate_x, 47), self.usd_czk_rate, font=self.medium_large_font, fill="white")
+            draw.text((rate_x, 40), self.usd_czk_rate, font=self.medium_large_font, fill="white")
 
     def _update_clock_display(self):
         """Update the clock display with Czech weekday names"""
